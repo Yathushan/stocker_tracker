@@ -1,38 +1,69 @@
-from collections import namedtuple
-import altair as alt
-import math
 import pandas as pd
+import numpy as np
+import yfinance as yf
 import streamlit as st
 
-"""
-# Welcome to Streamlit!
+from PIL import Image
+import urllib.request
 
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:
+import altair as alt
 
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
+def display_img(url):
+    with urllib.request.urlopen(url) as url:
+        with open('temp.jpg', 'wb') as f:
+            f.write(url.read())
+    img = Image.open('temp.jpg')
+    return img
 
-In the meantime, below is an example of what you can do with just a few lines of code:
-"""
+st.header('Stock Tracker')
 
 
-with st.echo(code_location='below'):
-    total_points = st.slider("Number of points in spiral", 1, 5000, 2000)
-    num_turns = st.slider("Number of turns in spiral", 1, 100, 9)
+ticker_name = st.text_input('What stock are you interested in tracking?', 'APPL', max_chars=7)
+ticket = yf.Ticker(ticker_name)
 
-    Point = namedtuple('Point', 'x y')
-    data = []
+news_items = []
+art_num = 0
+for i in ticket.news:
+    news_items.append("Article " + str(art_num))
+    art_num+=1
 
-    points_per_turn = total_points / num_turns
+col1, col2, col3 = st.columns(3)
+with col2:
+    ticker_img = ticket.info['logo_url']
+    st.image(display_img(ticker_img), use_column_width='auto')
 
-    for curr_point_num in range(total_points):
-        curr_turn, i = divmod(curr_point_num, points_per_turn)
-        angle = (curr_turn + 1) * 2 * math.pi * i / points_per_turn
-        radius = curr_point_num / total_points
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        data.append(Point(x, y))
+with st.expander("Detailed Description of " + str(ticker_name)):
+    st.write(ticket.info['longBusinessSummary'])
 
-    st.altair_chart(alt.Chart(pd.DataFrame(data), height=500, width=500)
-        .mark_circle(color='#0068c9', opacity=0.5)
-        .encode(x='x:Q', y='y:Q'))
+met1, met2, met3 = st.columns(3)
+with met1:
+    if ticket.info['currentPrice']:
+        st.metric("Current Price",ticket.info['currentPrice'])
+with met2:
+    if ticket.shares.iat[0,-1].any():
+        st.metric("Number of Shares",ticket.shares.iat[0,-1])
+with met3:
+    if ticket.splits.any():
+        st.metric("Stock Splits",ticket.splits[2])
+
+stock_price, quarter_balance, recommendations = st.tabs(["Historic Price", "Quarterly Balance", "Analyst Recommendation"])
+with stock_price:
+    hist = ticket.history(period="max")
+    st.line_chart(hist, y=['Close'])
+with quarter_balance:
+    st.dataframe(ticket.quarterly_balance_sheet, use_container_width=True)
+with recommendations:
+    st.dataframe(ticket.recommendations_summary, use_container_width=True)
+
+
+# st.write(ticket.news)
+
+tabs = st.tabs(news_items)
+counter = 0
+for i in tabs:
+    with i:
+        if 'thumbnail' in ticket.news[counter]:
+            article_img = ticket.news[counter]['thumbnail']['resolutions'][0]['url']
+        st.image(display_img(article_img), use_column_width='auto', caption=st.write(ticket.news[counter]['title']))
+        st.write(ticket.news[counter]['link'])
+    counter+=1
